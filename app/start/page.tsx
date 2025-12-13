@@ -1,6 +1,8 @@
-import Image from "next/image";
-import Link from "next/link";
-import React from "react";
+"use client";
+
+import { useRouter } from "next/navigation";
+import ProfileCard from "@/components/ProfileCard";
+import Button from "@/components/Button";
 
 const pet = {
   name: "콩이",
@@ -9,38 +11,38 @@ const pet = {
 };
 
 export default function StartPage() {
+  const router = useRouter();
+
+  const handleStart = () => {
+    // 산책 시작 시간 저장
+    const startTime = new Date().toISOString();
+    localStorage.setItem("walkingStartTime", startTime);
+    localStorage.setItem("walkingElapsed", "0");
+    localStorage.setItem("walkingIsActive", "true");
+
+    router.push("/walking");
+  };
+
   return (
-    <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-6 py-10">
+    <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-4 sm:px-6 py-8 sm:py-10">
       <div className="w-full max-w-md text-center space-y-10">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-28 w-28 rounded-full overflow-hidden border-4 border-[#A8DED0] shadow-sm">
-            <Image
-              src={pet.image}
-              alt={pet.name}
-              width={112}
-              height={112}
-              className="h-full w-full object-cover"
-              priority
-            />
-          </div>
-          <p className="text-lg font-semibold text-gray-800">{pet.name}</p>
+        <div className="hover-lift">
+          <ProfileCard name={pet.name} image={pet.image} size="md" />
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
-          산책을 시작해볼까요?
-        </h1>
+        <div className="space-y-3">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
+            산책을 시작해볼까요?
+          </h1>
+          <p className="text-gray-600 text-sm">
+            {pet.name}와 함께 즐거운 산책 시간을 보내세요
+          </p>
+        </div>
 
-        <Link
-          href="/walking"
-          className="block w-full bg-[#A8DED0] text-gray-900 font-semibold py-4 rounded-full shadow-md transition active:scale-95"
-        >
+        <Button onClick={handleStart} variant="primary" size="md">
           산책 시작하기
-        </Link>
+        </Button>
       </div>
     </div>
   );
 }
-
-
-
-
