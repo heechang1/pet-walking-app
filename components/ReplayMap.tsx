@@ -238,9 +238,9 @@ const ReplayMap: React.FC<ReplayMapProps> = ({
               }
             ]
           }}
-          style={{ width: "100%", height: "100%" }}
-          attributionControl={true}
-          interactive={true}
+        style={{ width: "100%", height: "100%" }}
+        attributionControl={false}
+        interactive={true}
         >
           {/* Marker */}
           {markerPosition && (
