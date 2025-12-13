@@ -102,6 +102,11 @@ export function calculateDistance(
 }
 
 /**
+ * 두 지점 간 거리 계산 (Haversine 공식) - calculateDistance의 별칭
+ */
+export const haversineDistance = calculateDistance;
+
+/**
  * 경로의 총 거리 계산
  */
 export function calculateTotalDistance(

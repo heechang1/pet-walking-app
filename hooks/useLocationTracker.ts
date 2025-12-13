@@ -5,6 +5,7 @@ import {
   positionToPoint,
   LocationPoint,
   calculateTotalDistance,
+  haversineDistance,
 } from "@/lib/location";
 
 interface UseLocationTrackerOptions {
@@ -90,13 +91,12 @@ export function useLocationTracker({
               return;
             }
 
-            // Filter by minimum distance
+            // Filter by minimum distance using point-to-point haversine distance
             const currentPath = pathRef.current;
-            const shouldAdd =
-              currentPath.length === 0 ||
-              calculateTotalDistance([currentPath[currentPath.length - 1], point]) > minDistance;
+            const lastPoint = currentPath.length > 0 ? currentPath[currentPath.length - 1] : null;
+            const delta = lastPoint ? haversineDistance(lastPoint, point) : Infinity;
 
-            if (shouldAdd) {
+            if (delta > minDistance) {
               const newPath = [...currentPath, point];
               pathRef.current = newPath;
               setPath(newPath);
