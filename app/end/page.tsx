@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import ProfileCard from "@/components/ProfileCard";
-import SummaryCard from "@/components/SummaryCard";
-import Button from "@/components/Button";
-import { formatTimeLong } from "@/utils/time";
+import Image from "next/image";
+import Link from "next/link";
+import React, { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { getTodayTotalMinutes } from "@/utils/walkingData";
 
 const pet = {
   name: "콩이",
@@ -14,95 +13,124 @@ const pet = {
 };
 
 export default function EndPage() {
-  const router = useRouter();
-  const [summary, setSummary] = useState({
-    total: "0분",
-    start: "00:00",
-    end: "00:00",
-    elapsedSeconds: 0,
-  });
+  const searchParams = useSearchParams();
+  const [minutes, setMinutes] = useState(0);
+  const [goalAchieved, setGoalAchieved] = useState(false);
+  const [distance, setDistance] = useState(0);
 
   useEffect(() => {
-    // localStorage에서 산책 데이터 가져오기
-    const startTime = localStorage.getItem("walkingStartTime");
-    const endTime = localStorage.getItem("walkingEndTime");
-    const elapsed = localStorage.getItem("walkingElapsed");
-
-    if (startTime && elapsed) {
-      const elapsedSeconds = parseInt(elapsed, 10);
-      const start = new Date(startTime);
-      const end = endTime ? new Date(endTime) : new Date();
-
-      const startTimeStr = `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`;
-      const endTimeStr = `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
-
-      setSummary({
-        total: formatTimeLong(elapsedSeconds),
-        start: startTimeStr,
-        end: endTimeStr,
-        elapsedSeconds,
-      });
+    // Try to get data from sessionStorage first (from walking page)
+    const walkSummary = sessionStorage.getItem("walkSummary");
+    if (walkSummary) {
+      try {
+        const data = JSON.parse(walkSummary);
+        setMinutes(data.minutes || 0);
+        setGoalAchieved(data.goalAchieved || false);
+        setDistance(data.distance || 0);
+        sessionStorage.removeItem("walkSummary"); // Clean up
+        return;
+      } catch (e) {
+        console.error("Error parsing walk summary:", e);
+      }
     }
-  }, []);
 
-  const handleSave = () => {
-    // 산책 기록을 localStorage에 저장
-    const walkRecord = {
-      date: new Date().toISOString().split("T")[0],
-      startTime: summary.start,
-      endTime: summary.end,
-      duration: summary.elapsedSeconds,
-      petName: pet.name,
-    };
+    // Fallback: get from URL params or today's total
+    const urlMinutes = searchParams.get("minutes");
+    const urlGoalAchieved = searchParams.get("goalAchieved");
+    const urlDistance = searchParams.get("distance");
 
-    // Note: This page is rarely used now as walking page navigates directly to calendar
-    // But keeping for backward compatibility
-    const existingRecords = JSON.parse(
-      localStorage.getItem("walkingHistory") || "[]"
-    );
-    existingRecords.push(walkRecord);
-    localStorage.setItem("walkingHistory", JSON.stringify(existingRecords));
+    if (urlMinutes) {
+      setMinutes(parseInt(urlMinutes, 10));
+    } else {
+      // Fallback: get from today's total
+      setMinutes(getTodayTotalMinutes());
+    }
 
-    // 산책 상태 초기화
-    localStorage.removeItem("walkingStartTime");
-    localStorage.removeItem("walkingEndTime");
-    localStorage.removeItem("walkingElapsed");
-    localStorage.removeItem("walkingIsActive");
+    if (urlGoalAchieved === "true") {
+      setGoalAchieved(true);
+    }
 
-    // 달력 페이지로 이동
-    router.push("/calendar");
+    if (urlDistance) {
+      setDistance(parseFloat(urlDistance));
+    }
+  }, [searchParams]);
+
+  const formatDistance = (meters: number): string => {
+    if (meters >= 1000) {
+      return `${(meters / 1000).toFixed(2)} km`;
+    }
+    return `${Math.round(meters)} m`;
   };
 
   return (
-    <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-4 sm:px-6 py-8 sm:py-10">
-      <div className="w-full max-w-md text-center space-y-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-          오늘 산책 완료!
-        </h1>
+    <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-6 py-10">
+      <div className="w-full max-w-md text-center space-y-6">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">오늘 산책 완료!</h1>
 
-        <div className="hover-lift">
-          <ProfileCard name={pet.name} image={pet.image} size="md" />
+        {/* Goal Achievement Banner */}
+        {goalAchieved && (
+          <div className="bg-gradient-to-r from-[#A8DED0] to-[#FBD3D3] rounded-2xl p-4 shadow-md border-2 border-[#A8DED0]">
+            <div className="flex items-center justify-center gap-2">
+              <span className="text-3xl">🎉</span>
+              <span className="text-xl font-bold text-gray-900">오늘 목표 달성!</span>
+              <span className="text-3xl">🎉</span>
+            </div>
+            <p className="text-sm text-gray-700 mt-1">20분 목표를 달성했습니다!</p>
+          </div>
+        )}
+
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-24 w-24 rounded-full overflow-hidden border-4 border-[#A8DED0] shadow-sm">
+            <Image
+              src={pet.image}
+              alt={pet.name}
+              width={96}
+              height={96}
+              className="h-full w-full object-cover"
+              priority
+            />
+          </div>
+          <p className="text-lg font-semibold text-gray-800">{pet.name}</p>
         </div>
 
-        <div className="hover-lift">
-          <SummaryCard
-            items={[
-              { label: "총 산책시간", value: summary.total },
-              { label: "시작시간", value: summary.start },
-              { label: "종료시간", value: summary.end },
-            ]}
-          />
+        <div className="bg-white rounded-2xl shadow-md border border-[#FBD3D3]/60 p-5 text-left space-y-3">
+          <div className="flex justify-between text-sm text-gray-600">
+            <span>총 산책시간</span>
+            <span className="font-semibold text-gray-900">{minutes}분</span>
+          </div>
+          {distance > 0 && (
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>총 거리</span>
+              <span className="font-semibold text-gray-900">{formatDistance(distance)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-sm text-gray-600">
+            <span>일일 목표</span>
+            <span className="font-semibold text-gray-900">
+              {goalAchieved ? "✅ 달성" : `${minutes}/20분`}
+            </span>
+          </div>
         </div>
 
         <div className="space-y-3">
-          <Button onClick={handleSave} variant="primary" size="md">
-            기록 저장하기
-          </Button>
-          <Button href="/start" variant="secondary-pink" size="md">
+          <Link
+            href="/calendar"
+            className="block w-full bg-[#A8DED0] text-gray-900 font-semibold py-4 rounded-full shadow-md transition active:scale-95"
+          >
+            캘린더 보기
+          </Link>
+          <Link
+            href="/start"
+            className="block w-full bg-[#FBD3D3] text-gray-900 font-semibold py-4 rounded-full shadow-md transition active:scale-95"
+          >
             처음으로 돌아가기
-          </Button>
+          </Link>
         </div>
       </div>
     </div>
   );
 }
+
+
+
+

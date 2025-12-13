@@ -1,148 +1,213 @@
 "use client";
 
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
-import TimerDisplay from "@/components/TimerDisplay";
-import Button from "@/components/Button";
-import Stamp from "@/components/Stamp";
-import { formatTime } from "@/utils/time";
-import { useWalkingTimer } from "@/hooks/useWalkingTimer";
+import MapView from "@/components/MapView";
 import { useLocationTracker } from "@/hooks/useLocationTracker";
+import { useStepCounter } from "@/hooks/useStepCounter";
 import { createWalkingRecord, saveWalkingRecord } from "@/utils/walkingData";
-
-// MapView를 동적으로 import (SSR 방지)
-const MapView = dynamic(() => import("@/components/MapView"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center bg-gray-100 rounded-lg h-[250px]">
-      <p className="text-gray-600">지도를 불러오는 중...</p>
-    </div>
-  ),
-});
-import { formatDistance } from "@/lib/location";
-
-const pet = {
-  name: "콩이",
-};
+import { getPetProfile } from "@/types/pet.types";
+import { PathPoint } from "@/types/path.types";
 
 export default function WalkingPage() {
   const router = useRouter();
-  const { elapsedSeconds, isActive, start, stop } = useWalkingTimer({
-    autoStart: true,
-  });
-  const { path, currentLocation, distance, accuracy, error: gpsError } =
-    useLocationTracker({
-      enabled: isActive,
-      minDistance: 5,
-      maxAccuracy: 100,
-    });
+  const { location, path, pathPoints, center, error, isTracking, startTracking, stopTracking } = useLocationTracker();
+  const { steps, resetSteps, isSupported: stepCounterSupported } = useStepCounter();
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [currentSpeed, setCurrentSpeed] = useState(0); // km/h
+  const [avgSpeed, setAvgSpeed] = useState(0); // km/h
+  const [maxSpeed, setMaxSpeed] = useState(0); // km/h
+  const startTimeRef = useRef<number | null>(null);
+  const previousLocationRef = useRef<PathPoint | null>(null);
+  const speedHistoryRef = useRef<number[]>([]);
+  const pet = getPetProfile();
 
-  const handleEnd = () => {
-    stop();
+  // Start tracking when component mounts
+  useEffect(() => {
+    startTracking();
+    setIsTimerRunning(true);
+    startTimeRef.current = Date.now();
+    resetSteps(); // Reset step counter when starting
+    return () => {
+      stopTracking();
+    };
+  }, [startTracking, stopTracking, resetSteps]);
 
-    const endTime = new Date();
-    const startTimeStr = localStorage.getItem("walkingStartTime");
-    if (!startTimeStr) return;
+  // Timer logic
+  useEffect(() => {
+    if (!isTimerRunning) return;
 
-    const startTime = new Date(startTimeStr);
-    const elapsed = elapsedSeconds;
+    const interval = setInterval(() => {
+      setElapsedTime((prev) => prev + 1);
+    }, 1000);
 
-    // Create and save walking record
-    const record = createWalkingRecord(
-      startTime,
-      endTime,
-      elapsed,
-      distance,
-      path,
-      pet.name,
-      false // stamp will be added in calendar
-    );
+    return () => clearInterval(interval);
+  }, [isTimerRunning]);
 
-    saveWalkingRecord(record);
+  // Calculate speed from path points
+  useEffect(() => {
+    if (!pathPoints || pathPoints.length < 2) {
+      setCurrentSpeed(0);
+      return;
+    }
 
-    // Clear walking state
-    localStorage.removeItem("walkingStartTime");
-    localStorage.removeItem("walkingEndTime");
-    localStorage.removeItem("walkingElapsed");
-    localStorage.removeItem("walkingIsActive");
-    localStorage.removeItem("walkingPath");
+    const currentPoint = pathPoints[pathPoints.length - 1];
+    const prevPoint = previousLocationRef.current;
 
-    // Navigate to calendar
+    if (prevPoint && currentPoint.timestamp > prevPoint.timestamp) {
+      const distance = calculateDistance(
+        prevPoint.latitude,
+        prevPoint.longitude,
+        currentPoint.latitude,
+        currentPoint.longitude
+      ); // meters
+      const timeDelta = (currentPoint.timestamp - prevPoint.timestamp) / 1000; // seconds
+
+      if (timeDelta > 0) {
+        const speedMs = distance / timeDelta; // m/s
+        const speedKmh = speedMs * 3.6; // km/h
+        setCurrentSpeed(speedKmh);
+
+        // Update max speed
+        setMaxSpeed((prev) => Math.max(prev, speedKmh));
+
+        // Add to speed history for average calculation
+        speedHistoryRef.current.push(speedKmh);
+        if (speedHistoryRef.current.length > 100) {
+          speedHistoryRef.current.shift(); // Keep last 100 readings
+        }
+
+        // Calculate average speed
+        const sum = speedHistoryRef.current.reduce((a, b) => a + b, 0);
+        setAvgSpeed(sum / speedHistoryRef.current.length);
+      }
+    }
+
+    previousLocationRef.current = currentPoint;
+  }, [pathPoints]);
+
+  // Helper function to calculate distance (Haversine formula)
+  function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371e3; // Earth radius in meters
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // Distance in meters
+  }
+
+  // Format time as HH:MM:SS
+  const formatTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const handleEndWalk = () => {
+    stopTracking();
+    setIsTimerRunning(false);
+    const endTime = Date.now();
+    
+    // Save walking record if we have a path
+    if (path.length > 0 && startTimeRef.current) {
+      const record = createWalkingRecord(
+        elapsedTime,
+        path,
+        startTimeRef.current,
+        endTime,
+        pathPoints, // Pass pathPoints for enhanced data
+        steps,
+        avgSpeed,
+        maxSpeed
+      );
+      saveWalkingRecord(record);
+      
+      // Also save for replay functionality (backwards compatibility)
+      const walkId = `walk_${Date.now()}`;
+      localStorage.setItem(walkId, JSON.stringify({
+        path,
+        duration: elapsedTime,
+        timestamp: startTimeRef.current,
+      }));
+      localStorage.setItem("latestWalkId", walkId);
+    }
+    
+    // Navigate to calendar page
     router.push("/calendar");
   };
 
-  const mapCenter: [number, number] | undefined = currentLocation
-    ? [currentLocation.latitude, currentLocation.longitude]
-    : undefined;
-
-  const getAccuracyMessage = () => {
-    if (!accuracy) return null;
-    if (accuracy < 10) return "정확도: 매우 정확 (GPS)";
-    if (accuracy < 50) return "정확도: 정확 (GPS/Wi-Fi)";
-    if (accuracy < 100) return "정확도: 보통 (Wi-Fi/셀타워)";
-    return "정확도: 낮음 (IP 기반)";
-  };
-
   return (
-    <div className="min-h-screen bg-[#FFFDF8] px-4 sm:px-6 py-8 sm:py-10">
-      <div className="w-full max-w-md mx-auto space-y-6">
-        <div className="text-center space-y-3">
+    <div className="min-h-screen bg-[#FFFDF8] px-6 py-10">
+      <div className="w-full max-w-md mx-auto text-center space-y-6">
+        <div className="space-y-2">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             {pet.name}와 산책 중…
           </h1>
-          <div className="flex justify-center text-3xl space-x-3 text-[#FBD3D3]">
-            <span className="paw-animation inline-block" style={{ animationDelay: "0ms" }}>
-              <Stamp size="lg" />
-            </span>
-            <span className="paw-animation inline-block" style={{ animationDelay: "400ms" }}>
-              <Stamp size="lg" />
-            </span>
-            <span className="paw-animation inline-block" style={{ animationDelay: "800ms" }}>
-              <Stamp size="lg" />
-            </span>
+          <div className="flex justify-center text-3xl space-x-2 text-[#FBD3D3]">
+            <span>🐾</span>
+            <span>🐾</span>
+            <span className="animate-pulse">🐾</span>
           </div>
         </div>
 
-        {/* Map */}
-        {path.length > 0 && (
-          <div className="space-y-2">
-            <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-              <MapView
-                path={path}
-                center={mapCenter}
-                height="250px"
-                showPath={true}
-                showMarker={true}
-              />
+        <div className="text-5xl sm:text-6xl font-bold text-gray-900 tracking-widest">
+          {formatTime(elapsedTime)}
+        </div>
+
+        {/* Stats Display */}
+        <div className="bg-white rounded-xl shadow-md border border-[#A8DED0]/60 p-4 space-y-3">
+          {stepCounterSupported && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">걸음 수</span>
+              <span className="font-semibold text-gray-900">{steps} 걸음</span>
             </div>
-            {gpsError && (
-              <p className="text-sm text-red-500 text-center animate-fadeIn">
-                {gpsError}
-              </p>
-            )}
-            {accuracy && (
-              <p className="text-xs text-gray-500 text-center">
-                {getAccuracyMessage()} (±{Math.round(accuracy)}m)
-              </p>
-            )}
-            {distance > 0 && (
-              <p className="text-sm text-gray-600 text-center font-medium">
-                이동 거리: {formatDistance(distance)}
-              </p>
-            )}
+          )}
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">현재 속도</span>
+            <span className="font-semibold text-gray-900">{currentSpeed.toFixed(1)} km/h</span>
           </div>
-        )}
-
-        {/* Timer */}
-        <div className="text-center bg-white rounded-2xl shadow-md p-6">
-          <TimerDisplay time={formatTime(elapsedSeconds)} />
+          {avgSpeed > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">평균 속도</span>
+              <span className="font-semibold text-gray-900">{avgSpeed.toFixed(1)} km/h</span>
+            </div>
+          )}
         </div>
 
-        {/* End button */}
-        <Button onClick={handleEnd} variant="secondary-orange" size="md">
+        {/* Map View */}
+        <div className="w-full">
+          <MapView
+            path={path}
+            pathPoints={pathPoints}
+            center={center || undefined}
+            showPath={true}
+            showMarker={true}
+            height="250px"
+            followUser={true}
+          />
+          {error && (
+            <p className="text-sm text-red-600 mt-2">
+              위치 오류: {error}
+            </p>
+          )}
+        </div>
+
+        <button
+          onClick={handleEndWalk}
+          className="block w-full bg-[#F6C28B] text-gray-900 font-semibold py-4 rounded-full shadow-md transition active:scale-95"
+        >
           산책 종료
-        </Button>
+        </button>
       </div>
     </div>
   );
 }
+

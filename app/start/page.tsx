@@ -1,48 +1,118 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import ProfileCard from "@/components/ProfileCard";
-import Button from "@/components/Button";
-
-const pet = {
-  name: "콩이",
-  image:
-    "https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=240&q=80",
-};
+import Link from "next/link";
+import React, { useEffect, useState } from "react";
+import { useWeather } from "@/hooks/useWeather";
+import { getTodayGoalProgress } from "@/utils/walkingData";
+import { getPetProfile, PetProfile } from "@/types/pet.types";
+import PetProfileCard from "@/components/PetProfileCard";
 
 export default function StartPage() {
-  const router = useRouter();
+  const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const { weather, loading: weatherLoading } = useWeather(location?.lat || null, location?.lon || null);
+  const [goalProgress, setGoalProgress] = useState({ current: 0, goal: 20, percentage: 0 });
+  const [petProfile, setPetProfile] = useState<PetProfile | null>(null);
 
-  const handleStart = () => {
-    // 산책 시작 시간 저장
-    const startTime = new Date().toISOString();
-    localStorage.setItem("walkingStartTime", startTime);
-    localStorage.setItem("walkingElapsed", "0");
-    localStorage.setItem("walkingIsActive", "true");
+  // Get user location
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocation({
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+        }
+      );
+    }
+  }, []);
 
-    router.push("/walking");
-  };
+  // Load pet profile
+  useEffect(() => {
+    setPetProfile(getPetProfile());
+  }, []);
+
+  // Update goal progress
+  useEffect(() => {
+    const progress = getTodayGoalProgress();
+    setGoalProgress(progress);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-4 sm:px-6 py-8 sm:py-10">
-      <div className="w-full max-w-md text-center space-y-10">
-        <div className="hover-lift">
-          <ProfileCard name={pet.name} image={pet.image} size="md" />
+    <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-6 py-10">
+      <div className="w-full max-w-md text-center space-y-6">
+        {/* Pet Profile */}
+        {petProfile && <PetProfileCard profile={petProfile} />}
+
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
+          산책을 시작해볼까요?
+        </h1>
+
+        {/* Weather Display */}
+        {weather && (
+          <div className="space-y-3">
+            <div className="bg-white rounded-xl shadow-md border border-[#FBD3D3]/60 p-4">
+              <div className="flex items-center justify-center gap-3">
+                <span className="text-3xl">{weather.icon}</span>
+                <div className="text-left">
+                  <div className="font-semibold text-gray-900">{weather.weatherText}</div>
+                  <div className="text-sm text-gray-600">
+                    {weather.temperature}°C · 바람 {weather.windSpeed} km/h
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Risk Alert Banner */}
+            {weather.riskAlert && (
+              <div
+                className="rounded-xl p-4 shadow-md border"
+                style={{
+                  backgroundColor: weather.riskAlert.color,
+                  borderColor: weather.riskAlert.color,
+                }}
+              >
+                <p className="font-semibold text-gray-900">{weather.riskAlert.message}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Daily Goal Progress */}
+        <div className="bg-white rounded-xl shadow-md border border-[#A8DED0]/60 p-4">
+          <div className="text-left mb-2">
+            <div className="text-sm text-gray-600">오늘의 목표</div>
+            <div className="text-lg font-semibold text-gray-900">
+              {goalProgress.current} / {goalProgress.goal}분
+            </div>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+            <div
+              className="bg-[#A8DED0] h-full transition-all duration-300 rounded-full"
+              style={{ width: `${goalProgress.percentage}%` }}
+            />
+          </div>
+          {goalProgress.percentage >= 100 && (
+            <div className="text-sm text-[#A8DED0] font-semibold mt-2">
+              ✅ 오늘 목표 달성!
+            </div>
+          )}
         </div>
 
-        <div className="space-y-3">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
-            산책을 시작해볼까요?
-          </h1>
-          <p className="text-gray-600 text-sm">
-            {pet.name}와 함께 즐거운 산책 시간을 보내세요
-          </p>
-        </div>
-
-        <Button onClick={handleStart} variant="primary" size="md">
+        <Link
+          href="/walking"
+          className="block w-full bg-[#A8DED0] text-gray-900 font-semibold py-4 rounded-full shadow-md transition active:scale-95"
+        >
           산책 시작하기
-        </Button>
+        </Link>
       </div>
     </div>
   );
 }
+
+
+
+
