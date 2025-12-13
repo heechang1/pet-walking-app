@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getMonthInfo, formatDateKey, getMonthName, getDayNames, getTodayKey } from "@/utils/date";
+import Stamp from "@/components/Stamp";
 
 interface CalendarProps {
   currentMonth: Date;
