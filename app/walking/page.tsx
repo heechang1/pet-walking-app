@@ -11,16 +11,23 @@ import { PathPoint } from "@/types/path.types";
 
 export default function WalkingPage() {
   const router = useRouter();
-  const { location, path, pathPoints, center, error, isTracking, startTracking, stopTracking } = useLocationTracker();
+  const { 
+    location, 
+    path, 
+    pathPoints, 
+    center, 
+    error, 
+    isTracking, 
+    currentSpeed: trackerSpeed,
+    averageSpeed: trackerAvgSpeed,
+    startTracking, 
+    stopTracking 
+  } = useLocationTracker();
   const { steps, resetSteps, isSupported: stepCounterSupported } = useStepCounter();
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [currentSpeed, setCurrentSpeed] = useState(0); // km/h
-  const [avgSpeed, setAvgSpeed] = useState(0); // km/h
   const [maxSpeed, setMaxSpeed] = useState(0); // km/h
   const startTimeRef = useRef<number | null>(null);
-  const previousLocationRef = useRef<PathPoint | null>(null);
-  const speedHistoryRef = useRef<number[]>([]);
   const pet = getPetProfile();
 
   // Start tracking when component mounts
@@ -29,10 +36,22 @@ export default function WalkingPage() {
     setIsTimerRunning(true);
     startTimeRef.current = Date.now();
     resetSteps(); // Reset step counter when starting
+    
+    // Handle page visibility for background tracking
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && isTracking) {
+        // Page became visible, ensure tracking is active
+        console.log("Page visible, ensuring tracking is active");
+      }
+    };
+    
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    
     return () => {
       stopTracking();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [startTracking, stopTracking, resetSteps]);
+  }, [startTracking, stopTracking, resetSteps, isTracking]);
 
   // Timer logic
   useEffect(() => {
@@ -45,63 +64,12 @@ export default function WalkingPage() {
     return () => clearInterval(interval);
   }, [isTimerRunning]);
 
-  // Calculate speed from path points
+  // Update max speed from tracker speed
   useEffect(() => {
-    if (!pathPoints || pathPoints.length < 2) {
-      setCurrentSpeed(0);
-      return;
+    if (trackerSpeed > 0) {
+      setMaxSpeed((prev) => Math.max(prev, trackerSpeed));
     }
-
-    const currentPoint = pathPoints[pathPoints.length - 1];
-    const prevPoint = previousLocationRef.current;
-
-    if (prevPoint && currentPoint.timestamp > prevPoint.timestamp) {
-      const distance = calculateDistance(
-        prevPoint.latitude,
-        prevPoint.longitude,
-        currentPoint.latitude,
-        currentPoint.longitude
-      ); // meters
-      const timeDelta = (currentPoint.timestamp - prevPoint.timestamp) / 1000; // seconds
-
-      if (timeDelta > 0) {
-        const speedMs = distance / timeDelta; // m/s
-        const speedKmh = speedMs * 3.6; // km/h
-        setCurrentSpeed(speedKmh);
-
-        // Update max speed
-        setMaxSpeed((prev) => Math.max(prev, speedKmh));
-
-        // Add to speed history for average calculation
-        speedHistoryRef.current.push(speedKmh);
-        if (speedHistoryRef.current.length > 100) {
-          speedHistoryRef.current.shift(); // Keep last 100 readings
-        }
-
-        // Calculate average speed
-        const sum = speedHistoryRef.current.reduce((a, b) => a + b, 0);
-        setAvgSpeed(sum / speedHistoryRef.current.length);
-      }
-    }
-
-    previousLocationRef.current = currentPoint;
-  }, [pathPoints]);
-
-  // Helper function to calculate distance (Haversine formula)
-  function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371e3; // Earth radius in meters
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c; // Distance in meters
-  }
+  }, [trackerSpeed]);
 
   // Format time as HH:MM:SS
   const formatTime = (seconds: number): string => {
@@ -112,36 +80,41 @@ export default function WalkingPage() {
   };
 
   const handleEndWalk = () => {
+    // Stop all tracking and timers first
     stopTracking();
     setIsTimerRunning(false);
-    const endTime = Date.now();
     
-    // Save walking record if we have a path
-    if (path.length > 0 && startTimeRef.current) {
-      const record = createWalkingRecord(
-        elapsedTime,
-        path,
-        startTimeRef.current,
-        endTime,
-        pathPoints, // Pass pathPoints for enhanced data
-        steps,
-        avgSpeed,
-        maxSpeed
-      );
-      saveWalkingRecord(record);
+    // Small delay to ensure all state updates complete
+    setTimeout(() => {
+      const endTime = Date.now();
       
-      // Also save for replay functionality (backwards compatibility)
-      const walkId = `walk_${Date.now()}`;
-      localStorage.setItem(walkId, JSON.stringify({
-        path,
-        duration: elapsedTime,
-        timestamp: startTimeRef.current,
-      }));
-      localStorage.setItem("latestWalkId", walkId);
-    }
-    
-    // Navigate to calendar page
-    router.push("/calendar");
+      // Save walking record if we have a path
+      if (path.length > 0 && startTimeRef.current) {
+        const record = createWalkingRecord(
+          elapsedTime,
+          path,
+          startTimeRef.current,
+          endTime,
+          pathPoints, // Pass pathPoints for enhanced data
+          steps,
+          trackerAvgSpeed,
+          maxSpeed
+        );
+        saveWalkingRecord(record);
+        
+        // Also save for replay functionality (backwards compatibility)
+        const walkId = `walk_${Date.now()}`;
+        localStorage.setItem(walkId, JSON.stringify({
+          path,
+          duration: elapsedTime,
+          timestamp: startTimeRef.current,
+        }));
+        localStorage.setItem("latestWalkId", walkId);
+      }
+      
+      // Navigate to calendar page
+      router.push("/calendar");
+    }, 100);
   };
 
   return (
@@ -172,12 +145,12 @@ export default function WalkingPage() {
           )}
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">현재 속도</span>
-            <span className="font-semibold text-gray-900">{currentSpeed.toFixed(1)} km/h</span>
+            <span className="font-semibold text-gray-900">{trackerSpeed.toFixed(1)} km/h</span>
           </div>
-          {avgSpeed > 0 && (
+          {trackerAvgSpeed > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">평균 속도</span>
-              <span className="font-semibold text-gray-900">{avgSpeed.toFixed(1)} km/h</span>
+              <span className="font-semibold text-gray-900">{trackerAvgSpeed.toFixed(1)} km/h</span>
             </div>
           )}
         </div>

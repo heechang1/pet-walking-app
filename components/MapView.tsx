@@ -237,6 +237,7 @@ const MapView: React.FC<MapViewProps> = ({
                 paint: {
                   "line-color": feature.properties.color,
                   "line-width": 4,
+                  "line-dasharray": [2, 2], // Dotted polyline
                 },
               });
             }
@@ -262,6 +263,7 @@ const MapView: React.FC<MapViewProps> = ({
               paint: {
                 "line-color": "#FF6B6B",
                 "line-width": 4,
+                "line-dasharray": [2, 2], // Dotted polyline
               },
             });
           }
@@ -294,6 +296,7 @@ const MapView: React.FC<MapViewProps> = ({
                 paint: {
                   "line-color": feature.properties.color,
                   "line-width": 4,
+                  "line-dasharray": [2, 2], // Dotted polyline
                 },
               });
             }
@@ -311,6 +314,7 @@ const MapView: React.FC<MapViewProps> = ({
             paint: {
               "line-color": "#FF6B6B",
               "line-width": 4,
+              "line-dasharray": [2, 2], // Dotted polyline
             },
           });
         }
@@ -318,7 +322,7 @@ const MapView: React.FC<MapViewProps> = ({
     };
 
     updateSource();
-  }, [pathGeoJSON]);
+  }, [pathGeoJSON, pathPoints?.length]); // Add pathPoints length to trigger continuous updates
 
   // Don't render map if no center position
   if (!viewState || !center) {

@@ -23,3 +23,4 @@ export function pathPointsToCoordinates(points: PathPoint[]): [number, number][]
   return points.map((point) => [point.longitude, point.latitude]);
 }
 
+
