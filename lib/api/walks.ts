@@ -1,4 +1,4 @@
-import { supabaseBrowserClient } from '@/lib/supabaseClient';
+import { supabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { Database } from '@/types/database.types';
 import { PathPoint } from '@/types/path.types';
 
@@ -18,7 +18,12 @@ export interface WalkInsertData {
   };
 }
 
-export async function insertWalk(walkData: WalkInsertData): Promise<Walk> {
+export async function insertWalk(walkData: WalkInsertData): Promise<Walk | null> {
+  if (!isSupabaseConfigured()) {
+    console.warn('Supabase is not configured. Cannot insert walk.');
+    return null;
+  }
+
   const insert: WalkInsert = {
     pet_id: walkData.pet_id,
     start_time: walkData.start_time,
@@ -105,4 +110,5 @@ export async function getWalksByDate(
 
   return data || [];
 }
+
 

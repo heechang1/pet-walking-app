@@ -177,7 +177,7 @@ export default function WalkingPage() {
         end_time: endDate.toISOString(),
         duration_sec: elapsedTime,
         distance_m: distance,
-        steps: steps || null,
+        steps: steps || undefined,
         path: {
           coordinates: path,
           pathPoints: pathPoints,

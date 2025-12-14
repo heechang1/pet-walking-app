@@ -3,20 +3,25 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export default function HomePage() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const supabaseConfigured = isSupabaseConfigured();
 
   useEffect(() => {
     if (!loading) {
-      if (user) {
+      // If Supabase is not configured, always go to /start
+      if (!supabaseConfigured) {
+        router.replace("/start");
+      } else if (user) {
         router.replace("/start");
       } else {
         router.replace("/login");
       }
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, supabaseConfigured]);
 
   // Show loading state during redirect
   return (

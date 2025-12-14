@@ -1,4 +1,4 @@
-import { supabaseBrowserClient } from '@/lib/supabaseClient';
+import { supabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { Database } from '@/types/database.types';
 
 type Pet = Database['public']['Tables']['pets']['Row'];
@@ -6,6 +6,11 @@ type PetInsert = Database['public']['Tables']['pets']['Insert'];
 type PetUpdate = Database['public']['Tables']['pets']['Update'];
 
 export async function getPets(userId: string): Promise<Pet[]> {
+  if (!isSupabaseConfigured()) {
+    console.warn('Supabase is not configured. Returning empty array.');
+    return [];
+  }
+
   const { data, error } = await supabaseBrowserClient
     .from('pets')
     .select('*')
@@ -14,13 +19,18 @@ export async function getPets(userId: string): Promise<Pet[]> {
 
   if (error) {
     console.error('Error fetching pets:', error);
-    throw error;
+    return [];
   }
 
   return data || [];
 }
 
 export async function getPet(id: string): Promise<Pet | null> {
+  if (!isSupabaseConfigured()) {
+    console.warn('Supabase is not configured. Returning null.');
+    return null;
+  }
+
   const { data, error } = await supabaseBrowserClient
     .from('pets')
     .select('*')
@@ -32,13 +42,18 @@ export async function getPet(id: string): Promise<Pet | null> {
     if (error.code === 'PGRST116') {
       return null; // Not found
     }
-    throw error;
+    return null;
   }
 
   return data;
 }
 
-export async function insertPet(pet: PetInsert): Promise<Pet> {
+export async function insertPet(pet: PetInsert): Promise<Pet | null> {
+  if (!isSupabaseConfigured()) {
+    console.warn('Supabase is not configured. Cannot insert pet.');
+    return null;
+  }
+
   const { data, error } = await supabaseBrowserClient
     .from('pets')
     .insert(pet)
@@ -80,4 +95,5 @@ export async function deletePet(id: string): Promise<void> {
     throw error;
   }
 }
+
 

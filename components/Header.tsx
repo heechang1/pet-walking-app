@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export default function Header() {
   const { user, signOut } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const supabaseConfigured = isSupabaseConfigured();
 
   // Don't show header on login page
   if (pathname === "/login" || pathname === "/auth/callback") {
@@ -15,11 +17,14 @@ export default function Header() {
   }
 
   const handleLogout = async () => {
-    await signOut();
-    router.push("/login");
+    if (supabaseConfigured) {
+      await signOut();
+      router.push("/login");
+    }
   };
 
-  if (!user) {
+  // If Supabase is configured, only show header when user is logged in
+  if (supabaseConfigured && !user) {
     return null;
   }
 
@@ -65,17 +70,22 @@ export default function Header() {
             </nav>
           </div>
           <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-600">{user.email}</span>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md"
-            >
-              로그아웃
-            </button>
+            {supabaseConfigured && user && (
+              <span className="text-sm text-gray-600">{user.email}</span>
+            )}
+            {supabaseConfigured && (
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md"
+              >
+                로그아웃
+              </button>
+            )}
           </div>
         </div>
       </div>
     </header>
   );
 }
+
 

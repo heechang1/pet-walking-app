@@ -1,17 +1,49 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabaseBrowserClient } from "@/lib/supabaseClient";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { supabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabaseClient";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const supabaseConfigured = isSupabaseConfigured();
+  const { user, loading: authLoading } = useAuth();
+
+  // Check for error message from auth callback
+  useEffect(() => {
+    const error = searchParams.get('error');
+    if (error) {
+      setMessage(error);
+    }
+  }, [searchParams]);
+
+  // If Supabase is not configured, redirect to start page
+  useEffect(() => {
+    if (!supabaseConfigured) {
+      router.replace("/start");
+    }
+  }, [supabaseConfigured, router]);
+
+  // If user is already logged in, redirect to start page
+  useEffect(() => {
+    if (supabaseConfigured && !authLoading && user) {
+      router.replace("/start");
+    }
+  }, [user, authLoading, supabaseConfigured, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!supabaseConfigured) {
+      setMessage("Supabase가 설정되지 않았습니다. Supabase를 설정해주세요.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
@@ -35,6 +67,18 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  // Don't render login form if Supabase is not configured
+  if (!supabaseConfigured) {
+    return (
+      <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-6 py-10">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#A8DED0] mx-auto mb-4"></div>
+          <p className="text-gray-600">로딩 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-6 py-10">
@@ -91,4 +135,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
 

@@ -24,3 +24,5 @@ export function pathPointsToCoordinates(points: PathPoint[]): [number, number][]
 }
 
 
+
+

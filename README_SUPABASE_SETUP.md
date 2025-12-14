@@ -50,3 +50,5 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 - **RLS errors**: Check that Row Level Security policies are created correctly
 - **CORS errors**: Ensure Supabase project URL is correct in `.env.local`
 
+
+

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabaseBrowserClient } from '@/lib/supabaseClient';
+import { supabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -8,10 +8,19 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // If Supabase is not configured, skip auth
+    if (!isSupabaseConfigured()) {
+      setLoading(false);
+      return;
+    }
+
     // Get initial session
     supabaseBrowserClient.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      setLoading(false);
+    }).catch((error) => {
+      console.error('Error getting session:', error);
       setLoading(false);
     });
 
@@ -28,6 +37,9 @@ export function useAuth() {
   }, []);
 
   const signOut = async () => {
+    if (!isSupabaseConfigured()) {
+      return;
+    }
     await supabaseBrowserClient.auth.signOut();
   };
 

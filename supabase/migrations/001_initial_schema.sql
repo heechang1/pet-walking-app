@@ -148,3 +148,5 @@ CREATE POLICY "Users can delete stamps for their pets"
     )
   );
 
+
+

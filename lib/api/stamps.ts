@@ -1,10 +1,15 @@
-import { supabaseBrowserClient } from '@/lib/supabaseClient';
+import { supabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { Database } from '@/types/database.types';
 
 type CalendarStamp = Database['public']['Tables']['calendar_stamp']['Row'];
 type CalendarStampInsert = Database['public']['Tables']['calendar_stamp']['Insert'];
 
-export async function insertStamp(stamp: CalendarStampInsert): Promise<CalendarStamp> {
+export async function insertStamp(stamp: CalendarStampInsert): Promise<CalendarStamp | null> {
+  if (!isSupabaseConfigured()) {
+    console.warn('Supabase is not configured. Cannot insert stamp.');
+    return null;
+  }
+
   // Check if stamp already exists for this date
   const existing = await getStampByDate(stamp.pet_id, stamp.walk_date);
 
@@ -54,6 +59,10 @@ export async function getStampByDate(
   petId: string,
   date: string // YYYY-MM-DD
 ): Promise<CalendarStamp | null> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
   const { data, error } = await supabaseBrowserClient
     .from('calendar_stamp')
     .select('*')
@@ -66,7 +75,7 @@ export async function getStampByDate(
       return null; // Not found
     }
     console.error('Error fetching stamp:', error);
-    throw error;
+    return null;
   }
 
   return data;
@@ -77,6 +86,10 @@ export async function getStampsByMonth(
   year: number,
   month: number
 ): Promise<CalendarStamp[]> {
+  if (!isSupabaseConfigured()) {
+    return [];
+  }
+
   // Get all stamps for the month
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const endDate = `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`;
@@ -91,7 +104,7 @@ export async function getStampsByMonth(
 
   if (error) {
     console.error('Error fetching stamps by month:', error);
-    throw error;
+    return [];
   }
 
   return data || [];
@@ -111,4 +124,5 @@ export async function getAllStamps(petId: string): Promise<CalendarStamp[]> {
 
   return data || [];
 }
+
 
