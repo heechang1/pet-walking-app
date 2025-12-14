@@ -5,6 +5,7 @@ import Link from "next/link";
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { getTodayTotalMinutes } from "@/utils/walkingData";
+import AuthGuard from "@/components/AuthGuard";
 
 const pet = {
   name: "콩이",
@@ -133,14 +134,16 @@ function EndPageContent() {
 
 export default function EndPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-6 py-10">
-        <div className="text-center">
-          <p className="text-gray-600">로딩 중...</p>
+    <AuthGuard>
+      <Suspense fallback={
+        <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-6 py-10">
+          <div className="text-center">
+            <p className="text-gray-600">로딩 중...</p>
+          </div>
         </div>
-      </div>
-    }>
-      <EndPageContent />
-    </Suspense>
+      }>
+        <EndPageContent />
+      </Suspense>
+    </AuthGuard>
   );
 }

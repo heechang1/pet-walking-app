@@ -8,9 +8,15 @@ import { useStepCounter } from "@/hooks/useStepCounter";
 import { createWalkingRecord, saveWalkingRecord } from "@/utils/walkingData";
 import { getPetProfile } from "@/types/pet.types";
 import { PathPoint } from "@/types/path.types";
+import AuthGuard from "@/components/AuthGuard";
+import { useAuth } from "@/hooks/useAuth";
+import { insertWalk } from "@/lib/api/walks";
+import { insertStamp } from "@/lib/api/stamps";
+import { getPet } from "@/lib/api/pets";
 
 export default function WalkingPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const { 
     location, 
     path, 
@@ -25,8 +31,36 @@ export default function WalkingPage() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [distance, setDistance] = useState(0); // meters
+  const [petName, setPetName] = useState("반려동물");
   const startTimeRef = useRef<number | null>(null);
-  const pet = getPetProfile();
+
+  // Load pet name
+  useEffect(() => {
+    const loadPetName = async () => {
+      if (!user) return;
+      
+      const selectedPetId = localStorage.getItem("selectedPetId");
+      if (selectedPetId) {
+        try {
+          const pet = await getPet(selectedPetId);
+          if (pet) {
+            setPetName(pet.name);
+          } else {
+            const localPet = getPetProfile();
+            setPetName(localPet.name);
+          }
+        } catch (error) {
+          const localPet = getPetProfile();
+          setPetName(localPet.name);
+        }
+      } else {
+        const localPet = getPetProfile();
+        setPetName(localPet.name);
+      }
+    };
+    
+    loadPetName();
+  }, [user]);
 
   // Calculate distance from path points
   const calculateDistance = (points: typeof pathPoints): number => {
@@ -105,50 +139,97 @@ export default function WalkingPage() {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
-  const handleEndWalk = () => {
+  const handleEndWalk = async () => {
     // Stop all tracking and timers first
     stopTracking();
     setIsTimerRunning(false);
     
-    // Small delay to ensure all state updates complete
-    setTimeout(() => {
-      const endTime = Date.now();
-      
-      // Save walking record if we have a path
-      if (path.length > 0 && startTimeRef.current) {
-        const record = createWalkingRecord(
-          elapsedTime,
-          path,
-          startTimeRef.current,
-          endTime,
-          pathPoints, // Pass pathPoints for enhanced data
-          steps,
-          0, // avgSpeed - removed
-          0  // maxSpeed - removed
-        );
-        saveWalkingRecord(record);
-        
-        // Also save for replay functionality (backwards compatibility)
-        const walkId = `walk_${Date.now()}`;
-        localStorage.setItem(walkId, JSON.stringify({
-          path,
-          duration: elapsedTime,
-          timestamp: startTimeRef.current,
-        }));
-        localStorage.setItem("latestWalkId", walkId);
-      }
-      
-      // Navigate to calendar page
+    if (!user || !startTimeRef.current || path.length === 0) {
       router.push("/calendar");
-    }, 100);
+      return;
+    }
+
+    try {
+      const endTime = Date.now();
+      const startTime = startTimeRef.current;
+      const startDate = new Date(startTime);
+      const endDate = new Date(endTime);
+      
+      // Get selected pet ID
+      const selectedPetId = localStorage.getItem("selectedPetId");
+      if (!selectedPetId) {
+        throw new Error("반려동물이 선택되지 않았습니다.");
+      }
+
+      // Verify pet belongs to user
+      const pet = await getPet(selectedPetId);
+      if (!pet || pet.user_id !== user.id) {
+        throw new Error("유효하지 않은 반려동물입니다.");
+      }
+
+      // Calculate goal achieved (20 minutes = 1200 seconds)
+      const goalAchieved = elapsedTime >= 1200;
+
+      // Save walk to Supabase
+      await insertWalk({
+        pet_id: selectedPetId,
+        start_time: startDate.toISOString(),
+        end_time: endDate.toISOString(),
+        duration_sec: elapsedTime,
+        distance_m: distance,
+        steps: steps || null,
+        path: {
+          coordinates: path,
+          pathPoints: pathPoints,
+        },
+      });
+
+      // Save or update calendar stamp
+      const walkDate = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
+      await insertStamp({
+        pet_id: selectedPetId,
+        walk_date: walkDate,
+        stamp_count: 1,
+        goal_achieved: goalAchieved,
+      });
+
+      // Also save to localStorage for backwards compatibility
+      const record = createWalkingRecord(
+        elapsedTime,
+        path,
+        startTime,
+        endTime,
+        pathPoints,
+        steps,
+        0, // avgSpeed - removed
+        0  // maxSpeed - removed
+      );
+      saveWalkingRecord(record);
+
+      const walkId = `walk_${Date.now()}`;
+      localStorage.setItem(walkId, JSON.stringify({
+        path,
+        duration: elapsedTime,
+        timestamp: startTime,
+      }));
+      localStorage.setItem("latestWalkId", walkId);
+
+    } catch (error) {
+      console.error("Error saving walk:", error);
+      alert("산책 기록 저장 중 오류가 발생했습니다: " + (error as Error).message);
+    }
+
+    // Navigate to calendar page
+    router.push("/calendar");
   };
 
   return (
-    <div className="min-h-screen bg-[#FFFDF8] px-6 py-10">
+    <AuthGuard>
+      <div className="min-h-screen bg-[#FFFDF8] px-6 py-10">
       <div className="w-full max-w-md mx-auto text-center space-y-6">
         <div className="space-y-2">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-            {pet.name}와 산책 중…
+            {petName}와 산책 중…
           </h1>
           <div className="flex justify-center text-3xl space-x-2 text-[#FBD3D3]">
             <span>🐾</span>
@@ -213,6 +294,7 @@ export default function WalkingPage() {
         </button>
       </div>
     </div>
+    </AuthGuard>
   );
 }
 

@@ -6,12 +6,56 @@ import { useWeather } from "@/hooks/useWeather";
 import { getTodayGoalProgress } from "@/utils/walkingData";
 import { getPetProfile, PetProfile } from "@/types/pet.types";
 import PetProfileCard from "@/components/PetProfileCard";
+import AuthGuard from "@/components/AuthGuard";
+import { useAuth } from "@/hooks/useAuth";
+import { getPet } from "@/lib/api/pets";
+import { Database } from "@/types/database.types";
+
+type Pet = Database['public']['Tables']['pets']['Row'];
 
 export default function StartPage() {
+  const { user } = useAuth();
   const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
   const { weather, loading: weatherLoading, error: weatherError } = useWeather(location?.lat || null, location?.lon || null);
   const [goalProgress, setGoalProgress] = useState({ current: 0, goal: 20, percentage: 0 });
   const [petProfile, setPetProfile] = useState<PetProfile | null>(null);
+  const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
+
+  // Load selected pet from DB
+  useEffect(() => {
+    const loadSelectedPet = async () => {
+      if (!user) return;
+
+      const selectedPetId = localStorage.getItem("selectedPetId");
+      if (selectedPetId) {
+        try {
+          const pet = await getPet(selectedPetId);
+          if (pet) {
+            setSelectedPet(pet);
+            // Convert DB pet to PetProfile format
+            setPetProfile({
+              name: pet.name,
+              age: pet.age || undefined,
+              weight: pet.weight || undefined,
+              breed: pet.breed || undefined,
+              photos: pet.photos || [],
+            });
+          } else {
+            // Fallback to localStorage pet profile
+            setPetProfile(getPetProfile());
+          }
+        } catch (error) {
+          console.error("Error loading pet:", error);
+          setPetProfile(getPetProfile());
+        }
+      } else {
+        // No selected pet, use localStorage profile
+        setPetProfile(getPetProfile());
+      }
+    };
+
+    loadSelectedPet();
+  }, [user]);
 
   // Get user location with fallback to Seoul
   useEffect(() => {
@@ -44,11 +88,6 @@ export default function StartPage() {
         lon: 126.9780,
       });
     }
-  }, []);
-
-  // Load pet profile
-  useEffect(() => {
-    setPetProfile(getPetProfile());
   }, []);
 
   // Update goal progress
@@ -148,6 +187,7 @@ export default function StartPage() {
         </Link>
       </div>
     </div>
+    </AuthGuard>
   );
 }
 
