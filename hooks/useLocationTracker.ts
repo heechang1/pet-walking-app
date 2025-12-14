@@ -16,8 +16,6 @@ export interface UseLocationTrackerReturn {
   center: [number, number] | null; // Current center [longitude, latitude]
   error: string | null;
   isTracking: boolean;
-  currentSpeed: number; // km/h
-  averageSpeed: number; // km/h
   startTracking: () => void;
   stopTracking: () => void;
   clearPath: () => void;
@@ -28,12 +26,8 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
   const [pathPoints, setPathPoints] = useState<PathPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isTracking, setIsTracking] = useState(false);
-  const [currentSpeed, setCurrentSpeed] = useState(0); // km/h
-  const [averageSpeed, setAverageSpeed] = useState(0); // km/h
   const watchIdRef = useRef<number | null>(null);
-  const lastPointRef = useRef<PathPoint | null>(null);
-  const lastTimestampRef = useRef<number | null>(null);
-  const speedHistoryRef = useRef<number[]>([]);
+  const pathPointsRef = useRef<PathPoint[]>([]); // Ref to track path for localStorage
   const forceRefreshRef = useRef<(() => void) | null>(null);
 
   // Convert pathPoints to coordinates array for backward compatibility
@@ -60,8 +54,8 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
     return R * c; // Distance in meters
   };
 
-  // Update path and calculate speed
-  const updatePathAndSpeed = useCallback((newLocation: LocationData) => {
+  // Update path - simplified without speed calculation
+  const updatePath = useCallback((newLocation: LocationData) => {
     const newPoint: PathPoint = {
       latitude: newLocation.latitude,
       longitude: newLocation.longitude,
@@ -69,9 +63,9 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
       timestamp: newLocation.timestamp,
     };
 
-    // Always update path points (reduced threshold for continuous updates)
+    // Update path points with 1-2 meter threshold
     setPathPoints((prevPoints) => {
-      // Check if this is a significant update (at least 1 meter to avoid noise)
+      // Check if this is a significant update (1-2 meters to avoid noise but allow slow movement)
       if (prevPoints.length > 0) {
         const lastPoint = prevPoints[prevPoints.length - 1];
         const distance = calculateDistance(
@@ -80,53 +74,31 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
           newLocation.latitude,
           newLocation.longitude
         );
-        // Only add if moved more than 1 meter (reduced from 5m for better tracking)
-        if (distance < 1) {
-          // Still update location even if path doesn't change
+        // Only add if moved more than 1.5 meters (balanced threshold)
+        if (distance < 1.5) {
+          // Still update location marker even if path doesn't change
           return prevPoints;
         }
       }
 
       // Add new point
       const updated = [...prevPoints, newPoint];
-      // Memory safety: limit to last 2000 points (increased for longer walks)
+      // Update ref for localStorage
+      pathPointsRef.current = updated;
+      
+      // Save to localStorage for background tracking
+      try {
+        localStorage.setItem("currentWalkPath", JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Failed to save path to localStorage:", e);
+      }
+
+      // Memory safety: limit to last 2000 points
       return updated.length > 2000 ? updated.slice(-2000) : updated;
     });
 
-    // Calculate speed
-    if (lastPointRef.current && lastTimestampRef.current) {
-      const distance = calculateDistance(
-        lastPointRef.current.latitude,
-        lastPointRef.current.longitude,
-        newLocation.latitude,
-        newLocation.longitude
-      ); // meters
-
-      const timeDelta = (newLocation.timestamp - lastTimestampRef.current) / 1000; // seconds
-
-      if (timeDelta > 0 && timeDelta < 60) {
-        // Only calculate if time delta is reasonable (less than 60 seconds)
-        const speedMs = distance / timeDelta; // m/s
-        const speedKmh = speedMs * 3.6; // km/h
-
-        // Update current speed
-        setCurrentSpeed(speedKmh);
-
-        // Update speed history for average
-        speedHistoryRef.current.push(speedKmh);
-        if (speedHistoryRef.current.length > 100) {
-          speedHistoryRef.current.shift(); // Keep last 100 readings
-        }
-
-        // Calculate average speed
-        const sum = speedHistoryRef.current.reduce((a, b) => a + b, 0);
-        setAverageSpeed(sum / speedHistoryRef.current.length);
-      }
-    }
-
-    // Update refs for next calculation
-    lastPointRef.current = newPoint;
-    lastTimestampRef.current = newLocation.timestamp;
+    // Always update location marker
+    setLocation(newLocation);
   }, []);
 
   const startTracking = useCallback(() => {
@@ -157,17 +129,22 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
           accuracy: position.coords.accuracy || 0,
           timestamp: position.timestamp,
         };
-        setLocation(newLocation);
         const initialPoint: PathPoint = {
           latitude: newLocation.latitude,
           longitude: newLocation.longitude,
           accuracy: newLocation.accuracy,
           timestamp: newLocation.timestamp,
         };
+        setLocation(newLocation);
         setPathPoints([initialPoint]);
-        // Initialize refs for speed calculation
-        lastPointRef.current = initialPoint;
-        lastTimestampRef.current = newLocation.timestamp;
+        pathPointsRef.current = [initialPoint];
+        
+        // Save initial point to localStorage
+        try {
+          localStorage.setItem("currentWalkPath", JSON.stringify([initialPoint]));
+        } catch (e) {
+          console.warn("Failed to save initial path to localStorage:", e);
+        }
       },
       (err) => {
         setError(`Error getting location: ${err.message}`);
@@ -185,10 +162,9 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
               accuracy: position.coords.accuracy || 0,
-              timestamp: position.timestamp,
+              timestamp: position.timestamp || Date.now(),
             };
-            setLocation(newLocation);
-            updatePathAndSpeed(newLocation);
+            updatePath(newLocation);
           },
           (err) => {
             console.error("Error refreshing location:", err);
@@ -200,6 +176,7 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
     forceRefreshRef.current = forceRefreshLocation;
 
     // Watch position changes with continuous updates
+    // Keep watchPosition active even when page is backgrounded
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         const newLocation: LocationData = {
@@ -208,8 +185,7 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
           accuracy: position.coords.accuracy || 0,
           timestamp: position.timestamp || Date.now(),
         };
-        setLocation(newLocation);
-        updatePathAndSpeed(newLocation);
+        updatePath(newLocation);
       },
       (err) => {
         setError(`Error watching location: ${err.message}`);
@@ -220,12 +196,29 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
     );
 
     // Handle page visibility changes (background/foreground)
+    // Ensure localStorage updates continue even if tab is hidden
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && isTracking) {
         // Force refresh when returning to page
         setTimeout(() => {
-          forceRefreshLocation();
+          if (forceRefreshRef.current) {
+            forceRefreshRef.current();
+          }
         }, 100);
+        
+        // Restore path from localStorage if needed
+        try {
+          const savedPath = localStorage.getItem("currentWalkPath");
+          if (savedPath) {
+            const parsed = JSON.parse(savedPath) as PathPoint[];
+            if (parsed.length > 0) {
+              setPathPoints(parsed);
+              pathPointsRef.current = parsed;
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to restore path from localStorage:", e);
+        }
       }
     };
 
@@ -234,7 +227,7 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isTracking, updatePathAndSpeed]);
+  }, [isTracking, updatePath]);
 
   const stopTracking = useCallback(() => {
     if (watchIdRef.current !== null) {
@@ -242,23 +235,27 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
       watchIdRef.current = null;
     }
     setIsTracking(false);
-    // Clear speed tracking refs
-    lastPointRef.current = null;
-    lastTimestampRef.current = null;
-    speedHistoryRef.current = [];
-    setCurrentSpeed(0);
-    setAverageSpeed(0);
     forceRefreshRef.current = null;
+    
+    // Clear localStorage path
+    try {
+      localStorage.removeItem("currentWalkPath");
+    } catch (e) {
+      console.warn("Failed to clear path from localStorage:", e);
+    }
   }, []);
 
   const clearPath = useCallback(() => {
     setPathPoints([]);
     setLocation(null);
-    lastPointRef.current = null;
-    lastTimestampRef.current = null;
-    speedHistoryRef.current = [];
-    setCurrentSpeed(0);
-    setAverageSpeed(0);
+    pathPointsRef.current = [];
+    
+    // Clear localStorage path
+    try {
+      localStorage.removeItem("currentWalkPath");
+    } catch (e) {
+      console.warn("Failed to clear path from localStorage:", e);
+    }
   }, []);
 
   // Cleanup on unmount
@@ -282,8 +279,6 @@ export const useLocationTracker = (): UseLocationTrackerReturn => {
     center,
     error,
     isTracking,
-    currentSpeed,
-    averageSpeed,
     startTracking,
     stopTracking,
     clearPath,

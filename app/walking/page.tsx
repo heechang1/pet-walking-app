@@ -18,17 +18,50 @@ export default function WalkingPage() {
     center, 
     error, 
     isTracking, 
-    currentSpeed: trackerSpeed,
-    averageSpeed: trackerAvgSpeed,
     startTracking, 
     stopTracking 
   } = useLocationTracker();
   const { steps, resetSteps, isSupported: stepCounterSupported } = useStepCounter();
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [maxSpeed, setMaxSpeed] = useState(0); // km/h
+  const [distance, setDistance] = useState(0); // meters
   const startTimeRef = useRef<number | null>(null);
   const pet = getPetProfile();
+
+  // Calculate distance from path points
+  const calculateDistance = (points: typeof pathPoints): number => {
+    if (points.length < 2) return 0;
+    
+    let totalDistance = 0;
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      
+      // Haversine formula
+      const R = 6371e3; // Earth radius in meters
+      const φ1 = (prev.latitude * Math.PI) / 180;
+      const φ2 = (curr.latitude * Math.PI) / 180;
+      const Δφ = ((curr.latitude - prev.latitude) * Math.PI) / 180;
+      const Δλ = ((curr.longitude - prev.longitude) * Math.PI) / 180;
+
+      const a =
+        Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+      totalDistance += R * c;
+    }
+    
+    return totalDistance;
+  };
+
+  // Update distance when path changes
+  useEffect(() => {
+    if (pathPoints.length > 1) {
+      const calculatedDistance = calculateDistance(pathPoints);
+      setDistance(calculatedDistance);
+    }
+  }, [pathPoints]);
 
   // Start tracking when component mounts
   useEffect(() => {
@@ -64,13 +97,6 @@ export default function WalkingPage() {
     return () => clearInterval(interval);
   }, [isTimerRunning]);
 
-  // Update max speed from tracker speed
-  useEffect(() => {
-    if (trackerSpeed > 0) {
-      setMaxSpeed((prev) => Math.max(prev, trackerSpeed));
-    }
-  }, [trackerSpeed]);
-
   // Format time as HH:MM:SS
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
@@ -97,8 +123,8 @@ export default function WalkingPage() {
           endTime,
           pathPoints, // Pass pathPoints for enhanced data
           steps,
-          trackerAvgSpeed,
-          maxSpeed
+          0, // avgSpeed - removed
+          0  // maxSpeed - removed
         );
         saveWalkingRecord(record);
         
@@ -144,13 +170,19 @@ export default function WalkingPage() {
             </div>
           )}
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">현재 속도</span>
-            <span className="font-semibold text-gray-900">{trackerSpeed.toFixed(1)} km/h</span>
+            <span className="text-gray-600">거리</span>
+            <span className="font-semibold text-gray-900">
+              {distance >= 1000 
+                ? `${(distance / 1000).toFixed(2)} km` 
+                : `${Math.round(distance)} m`}
+            </span>
           </div>
-          {trackerAvgSpeed > 0 && (
+          {location && (
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">평균 속도</span>
-              <span className="font-semibold text-gray-900">{trackerAvgSpeed.toFixed(1)} km/h</span>
+              <span className="text-gray-600">위치 정확도</span>
+              <span className="font-semibold text-gray-900">
+                {location.accuracy ? `${Math.round(location.accuracy)} m` : "측정 중"}
+              </span>
             </div>
           )}
         </div>

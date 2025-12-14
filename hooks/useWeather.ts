@@ -89,6 +89,16 @@ function getWeatherInfo(code: number): { text: string; icon: string } {
   return { text: "알 수 없음", icon: "🌡️" };
 }
 
+const WEATHER_CACHE_KEY = "weatherCache";
+const WEATHER_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+interface CachedWeather {
+  data: WeatherData;
+  timestamp: number;
+  lat: number;
+  lon: number;
+}
+
 export function useWeather(latitude: number | null, longitude: number | null) {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -101,14 +111,41 @@ export function useWeather(latitude: number | null, longitude: number | null) {
       return;
     }
 
+    // Check cache first
+    try {
+      const cachedStr = localStorage.getItem(WEATHER_CACHE_KEY);
+      if (cachedStr) {
+        const cached: CachedWeather = JSON.parse(cachedStr);
+        const isSameLocation = 
+          Math.abs(cached.lat - latitude) < 0.01 && 
+          Math.abs(cached.lon - longitude) < 0.01;
+        const isRecent = Date.now() - cached.timestamp < WEATHER_CACHE_DURATION;
+        
+        if (isSameLocation && isRecent) {
+          setWeather(cached.data);
+          setLoading(false);
+          return; // Use cached data
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to read weather cache:", e);
+    }
+
     const fetchWeather = async () => {
       setLoading(true);
       setError(null);
 
+      // Create timeout promise
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("Timeout")), 1000); // 1 second timeout
+      });
+
       try {
-        const response = await fetch(
-          `/api/weather?latitude=${latitude}&longitude=${longitude}`
-        );
+        // Race between fetch and timeout
+        const response = await Promise.race([
+          fetch(`/api/weather?latitude=${latitude}&longitude=${longitude}`),
+          timeoutPromise,
+        ]);
 
         if (!response.ok) {
           throw new Error("날씨 정보를 가져올 수 없습니다");
@@ -125,17 +162,45 @@ export function useWeather(latitude: number | null, longitude: number | null) {
           data.current_weather.weathercode
         );
 
-        setWeather({
+        const weatherData: WeatherData = {
           temperature: temp,
           windSpeed: windSpeedKmh,
           weatherCode: data.current_weather.weathercode,
           weatherText: weatherInfo.text,
           icon: weatherInfo.icon,
           riskAlert,
-        });
+        };
+
+        setWeather(weatherData);
+
+        // Save to cache
+        try {
+          const cache: CachedWeather = {
+            data: weatherData,
+            timestamp: Date.now(),
+            lat: latitude,
+            lon: longitude,
+          };
+          localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(cache));
+        } catch (e) {
+          console.warn("Failed to save weather cache:", e);
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "날씨 정보 로드 실패");
-        setWeather(null);
+        // On timeout or error, try to use cached data
+        try {
+          const cachedStr = localStorage.getItem(WEATHER_CACHE_KEY);
+          if (cachedStr) {
+            const cached: CachedWeather = JSON.parse(cachedStr);
+            setWeather(cached.data);
+            setError(null);
+          } else {
+            setError("날씨 정보를 불러올 수 없습니다");
+            setWeather(null);
+          }
+        } catch (e) {
+          setError("날씨 정보를 불러올 수 없습니다");
+          setWeather(null);
+        }
       } finally {
         setLoading(false);
       }

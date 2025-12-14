@@ -26,22 +26,36 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch from Open-Meteo API
+    // Fetch from Open-Meteo API with timeout
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=Asia%2FSeoul`;
 
-    const response = await fetch(url, {
-      headers: {
-        "Accept": "application/json",
-      },
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
 
-    if (!response.ok) {
-      throw new Error(`Open-Meteo API error: ${response.status}`);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "Accept": "application/json",
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Open-Meteo API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      return NextResponse.json(data);
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error("Request timeout");
+      }
+      throw error;
     }
-
-    const data = await response.json();
-
-    return NextResponse.json(data);
   } catch (error) {
     console.error("Weather API error:", error);
     return NextResponse.json(

@@ -52,34 +52,54 @@ export default function StartPage() {
         </h1>
 
         {/* Weather Display */}
-        {weather && (
-          <div className="space-y-3">
+        <div className="space-y-3">
+          {weatherLoading && !weather ? (
+            // Loading skeleton
             <div className="bg-white rounded-xl shadow-md border border-[#FBD3D3]/60 p-4">
-              <div className="flex items-center justify-center gap-3">
-                <span className="text-3xl">{weather.icon}</span>
-                <div className="text-left">
-                  <div className="font-semibold text-gray-900">{weather.weatherText}</div>
-                  <div className="text-sm text-gray-600">
-                    {weather.temperature}°C · 바람 {weather.windSpeed} km/h
-                  </div>
+              <div className="flex items-center justify-center gap-3 animate-pulse">
+                <div className="w-8 h-8 bg-gray-200 rounded"></div>
+                <div className="text-left space-y-2">
+                  <div className="h-5 w-24 bg-gray-200 rounded"></div>
+                  <div className="h-4 w-32 bg-gray-200 rounded"></div>
                 </div>
               </div>
             </div>
-
-            {/* Risk Alert Banner */}
-            {weather.riskAlert && (
-              <div
-                className="rounded-xl p-4 shadow-md border"
-                style={{
-                  backgroundColor: weather.riskAlert.color,
-                  borderColor: weather.riskAlert.color,
-                }}
-              >
-                <p className="font-semibold text-gray-900">{weather.riskAlert.message}</p>
+          ) : weather ? (
+            <>
+              <div className="bg-white rounded-xl shadow-md border border-[#FBD3D3]/60 p-4">
+                <div className="flex items-center justify-center gap-3">
+                  <span className="text-3xl">{weather.icon}</span>
+                  <div className="text-left">
+                    <div className="font-semibold text-gray-900">{weather.weatherText}</div>
+                    <div className="text-sm text-gray-600">
+                      {weather.temperature}°C · 바람 {weather.windSpeed} km/h
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+
+              {/* Risk Alert Banner */}
+              {weather.riskAlert && (
+                <div
+                  className="rounded-xl p-4 shadow-md border"
+                  style={{
+                    backgroundColor: weather.riskAlert.color,
+                    borderColor: weather.riskAlert.color,
+                  }}
+                >
+                  <p className="font-semibold text-gray-900">{weather.riskAlert.message}</p>
+                </div>
+              )}
+            </>
+          ) : (
+            // Error or no weather state
+            <div className="bg-white rounded-xl shadow-md border border-gray-200 p-4">
+              <div className="text-sm text-gray-500 text-center">
+                날씨 정보를 불러올 수 없습니다
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Daily Goal Progress */}
         <div className="bg-white rounded-xl shadow-md border border-[#A8DED0]/60 p-4">
