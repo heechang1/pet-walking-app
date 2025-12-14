@@ -135,26 +135,32 @@ export function useWeather(latitude: number | null, longitude: number | null) {
       setLoading(true);
       setError(null);
 
-      // Create timeout promise
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Timeout")), 1000); // 1 second timeout
-      });
-
       try {
-        // Race between fetch and timeout
-        const response = await Promise.race([
-          fetch(`/api/weather?latitude=${latitude}&longitude=${longitude}`),
-          timeoutPromise,
-        ]);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+        const response = await fetch(
+          `/api/weather?latitude=${latitude}&longitude=${longitude}`,
+          { signal: controller.signal }
+        );
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
-          throw new Error("날씨 정보를 가져올 수 없습니다");
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || "날씨 정보를 가져올 수 없습니다");
         }
 
         const data: OpenMeteoResponse = await response.json();
+        
+        // Validate response structure
+        if (!data.current_weather) {
+          throw new Error("날씨 데이터 형식이 올바르지 않습니다");
+        }
+
         const weatherInfo = getWeatherInfo(data.current_weather.weathercode);
         const temp = Math.round(data.current_weather.temperature);
-        const windSpeedMs = data.current_weather.windspeed;
+        const windSpeedMs = data.current_weather.windspeed || 0;
         const windSpeedKmh = Math.round(windSpeedMs * 3.6); // Convert m/s to km/h
         const riskAlert = calculateRiskAlert(
           temp,
@@ -172,6 +178,7 @@ export function useWeather(latitude: number | null, longitude: number | null) {
         };
 
         setWeather(weatherData);
+        setError(null);
 
         // Save to cache
         try {
@@ -185,20 +192,24 @@ export function useWeather(latitude: number | null, longitude: number | null) {
         } catch (e) {
           console.warn("Failed to save weather cache:", e);
         }
-      } catch (err) {
+      } catch (err: any) {
+        console.error("Weather fetch error:", err);
+        
         // On timeout or error, try to use cached data
         try {
           const cachedStr = localStorage.getItem(WEATHER_CACHE_KEY);
           if (cachedStr) {
             const cached: CachedWeather = JSON.parse(cachedStr);
+            // Use cached data even if location is slightly different
             setWeather(cached.data);
             setError(null);
+            console.log("Using cached weather data");
           } else {
-            setError("날씨 정보를 불러올 수 없습니다");
+            setError(err?.message || "날씨 정보를 불러올 수 없습니다");
             setWeather(null);
           }
         } catch (e) {
-          setError("날씨 정보를 불러올 수 없습니다");
+          setError(err?.message || "날씨 정보를 불러올 수 없습니다");
           setWeather(null);
         }
       } finally {

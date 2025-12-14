@@ -9,11 +9,11 @@ import PetProfileCard from "@/components/PetProfileCard";
 
 export default function StartPage() {
   const [location, setLocation] = useState<{ lat: number; lon: number } | null>(null);
-  const { weather, loading: weatherLoading } = useWeather(location?.lat || null, location?.lon || null);
+  const { weather, loading: weatherLoading, error: weatherError } = useWeather(location?.lat || null, location?.lon || null);
   const [goalProgress, setGoalProgress] = useState({ current: 0, goal: 20, percentage: 0 });
   const [petProfile, setPetProfile] = useState<PetProfile | null>(null);
 
-  // Get user location
+  // Get user location with fallback to Seoul
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -25,8 +25,24 @@ export default function StartPage() {
         },
         (error) => {
           console.error("Error getting location:", error);
+          // Fallback to Seoul coordinates if geolocation fails
+          setLocation({
+            lat: 37.5665,
+            lon: 126.9780,
+          });
+        },
+        {
+          timeout: 10000,
+          maximumAge: 300000, // 5 minutes
+          enableHighAccuracy: false,
         }
       );
+    } else {
+      // Fallback to Seoul if geolocation is not supported
+      setLocation({
+        lat: 37.5665,
+        lon: 126.9780,
+      });
     }
   }, []);
 
@@ -95,7 +111,9 @@ export default function StartPage() {
             // Error or no weather state
             <div className="bg-white rounded-xl shadow-md border border-gray-200 p-4">
               <div className="text-sm text-gray-500 text-center">
-                날씨 정보를 불러올 수 없습니다
+                {weatherLoading 
+                  ? "날씨 정보를 불러오는 중..." 
+                  : weatherError || "날씨 정보를 불러올 수 없습니다"}
               </div>
             </div>
           )}

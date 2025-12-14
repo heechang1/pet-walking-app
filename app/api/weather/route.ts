@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=Asia%2FSeoul`;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
 
     try {
       const response = await fetch(url, {
@@ -38,22 +38,32 @@ export async function GET(request: NextRequest) {
           "Accept": "application/json",
         },
         signal: controller.signal,
+        next: { revalidate: 300 }, // Cache for 5 minutes
       });
 
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Open-Meteo API error: ${response.status}`);
+        const errorText = await response.text().catch(() => "Unknown error");
+        console.error(`Open-Meteo API error: ${response.status} - ${errorText}`);
+        throw new Error(`API error: ${response.status}`);
       }
 
       const data = await response.json();
+      
+      // Validate response
+      if (!data.current_weather) {
+        throw new Error("Invalid API response structure");
+      }
 
       return NextResponse.json(data);
     } catch (error: any) {
       clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
+      if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+        console.error("Weather API timeout");
         throw new Error("Request timeout");
       }
+      console.error("Weather API error:", error);
       throw error;
     }
   } catch (error) {
