@@ -12,12 +12,13 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!loading) {
-      // If Supabase is not configured, always go to /start
-      if (!supabaseConfigured) {
-        router.replace("/start");
-      } else if (user) {
+      // Always redirect to login if not authenticated
+      // If Supabase is not configured, show login page anyway (graceful degradation)
+      if (supabaseConfigured && user) {
+        // User is logged in, go to start page
         router.replace("/start");
       } else {
+        // User is not logged in or Supabase not configured, go to login page
         router.replace("/login");
       }
     }

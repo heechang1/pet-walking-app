@@ -22,12 +22,8 @@ function LoginPageContent() {
     }
   }, [searchParams]);
 
-  // If Supabase is not configured, redirect to start page
-  useEffect(() => {
-    if (!supabaseConfigured) {
-      router.replace("/start");
-    }
-  }, [supabaseConfigured, router]);
+  // If Supabase is not configured, show a message but allow user to stay on login page
+  // (For graceful degradation - app can work without Supabase in some modes)
 
   // If user is already logged in, redirect to start page
   useEffect(() => {
@@ -68,18 +64,6 @@ function LoginPageContent() {
     }
   };
 
-  // Don't render login form if Supabase is not configured
-  if (!supabaseConfigured) {
-    return (
-      <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-6 py-10">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#A8DED0] mx-auto mb-4"></div>
-          <p className="text-gray-600">로딩 중...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#FFFDF8] flex items-center justify-center px-6 py-10">
       <div className="w-full max-w-md">
@@ -87,6 +71,13 @@ function LoginPageContent() {
           <div className="text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">반려동물 산책 앱</h1>
             <p className="text-gray-600">이메일로 로그인하세요</p>
+            {!supabaseConfigured && (
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ Supabase가 설정되지 않았습니다. 환경 변수를 확인해주세요.
+                </p>
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">

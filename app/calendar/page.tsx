@@ -12,7 +12,7 @@ type CalendarStamp = Database['public']['Tables']['calendar_stamp']['Row'];
 type Walk = Database['public']['Tables']['walks']['Row'];
 
 export default function CalendarPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [stamps, setStamps] = useState<Record<string, CalendarStamp>>({});
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -23,14 +23,31 @@ export default function CalendarPage() {
   const month = currentDate.getMonth() + 1;
 
   useEffect(() => {
+    // Wait for auth to finish loading
+    if (authLoading) {
+      return;
+    }
+
+    // If auth is done loading but no user, show empty calendar
+    if (!user) {
+      setStamps({});
+      setLoading(false);
+      return;
+    }
+
     loadStamps();
-  }, [user, year, month]);
+  }, [user, authLoading, year, month]);
 
   const loadStamps = async () => {
-    if (!user) return;
+    if (!user) {
+      setStamps({});
+      setLoading(false);
+      return;
+    }
 
     const selectedPetId = localStorage.getItem("selectedPetId");
     if (!selectedPetId) {
+      setStamps({});
       setLoading(false);
       return;
     }
@@ -47,6 +64,7 @@ export default function CalendarPage() {
       setStamps(stampsMap);
     } catch (error) {
       console.error("Error loading stamps:", error);
+      setStamps({});
     } finally {
       setLoading(false);
     }
@@ -276,7 +294,8 @@ export default function CalendarPage() {
               </div>
             )}
 
-            {loading && (
+            {/* Show loading indicator only when auth is loading or stamps are loading */}
+            {authLoading && (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#A8DED0] mx-auto mb-2"></div>
                 <p className="text-gray-600">로딩 중...</p>
